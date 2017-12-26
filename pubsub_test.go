@@ -5,9 +5,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPubsub_Publish(t *testing.T) {
+func TestPubsub_SubscribeNonExistentTopic(t *testing.T) {
 	p := NewPubsub()
-	s := p.Subscribe("test")
+	s, e := p.Subscribe("test")
+	assert.NotNil(t, e)
+	assert.Nil(t, s)
+}
+
+func TestPubsub_PublishNonExistentTopic(t *testing.T) {
+	p := NewPubsub()
+	e := p.Publish("test", "foo")
+	assert.NotNil(t, e)
+}
+
+func TestPubsub_PublishSubscribe(t *testing.T) {
+	p := NewPubsub()
+	err := p.CreateTopic("test")
+	s, err := p.Subscribe("test")
+	assert.Nil(t, err)
 	p.Publish("test", "foo")
 	p.Publish("test", "bar")
 	e := <- s.Events()
@@ -19,8 +34,9 @@ func TestPubsub_Publish(t *testing.T) {
 
 func TestPubsub_MultipleSubscriber(t *testing.T) {
 	p := NewPubsub()
-	s1 := p.Subscribe("test")
-	s2 := p.Subscribe("test")
+	p.CreateTopic("test")
+	s1, _ := p.Subscribe("test")
+	s2, _ := p.Subscribe("test")
 	p.Publish("test", "foo")
 	e1 := <- s1.Events()
 	e2 := <- s2.Events()
@@ -30,8 +46,10 @@ func TestPubsub_MultipleSubscriber(t *testing.T) {
 
 func TestPubsub_MultipleTopics(t *testing.T) {
 	p := NewPubsub()
-	s1 := p.Subscribe("foo")
-	s2 := p.Subscribe("bar")
+	p.CreateTopic("foo")
+	p.CreateTopic("bar")
+	s1, _ := p.Subscribe("foo")
+	s2, _ := p.Subscribe("bar")
 	p.Publish("foo", "a")
 	p.Publish("bar", "b")
 	e1 := <- s1.Events()
@@ -43,13 +61,17 @@ func TestPubsub_MultipleTopics(t *testing.T) {
 func TestRacePubsub(t *testing.T) {
 	p := NewPubsub()
 	topics := []string { "a", "b", "c", "d"}
+	for _, t := range topics {
+		p.CreateTopic(t)
+	}
+
 	N := 200
 	M := 1000
 	K := len(topics)
 	for i:=0;i<N;i++ {
 		// consumer
 		go func(idx int) {
-			s := p.Subscribe(topics[idx % K])
+			s, _ := p.Subscribe(topics[idx % K])
 			for _ = range s.Events() {
 			}
 		}(i)
@@ -62,5 +84,4 @@ func TestRacePubsub(t *testing.T) {
 			}
 		}(i)
 	}
-	p.CloseAll()
 }
