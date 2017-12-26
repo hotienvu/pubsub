@@ -3,6 +3,7 @@ package pubsub
 import (
 	"testing"
 	"github.com/stretchr/testify/assert"
+	"time"
 )
 
 func TestPubsub_SubscribeNonExistentTopic(t *testing.T) {
@@ -61,22 +62,35 @@ func TestPubsub_MultipleTopics(t *testing.T) {
 func TestRacePubsub(t *testing.T) {
 	p := NewPubsub()
 	topics := []string { "a", "b", "c", "d"}
-	for _, t := range topics {
-		p.CreateTopic(t)
-	}
+	// create topics thread
+	go func() {
+		for _, t := range topics {
+			p.CreateTopic(t)
+		}
+	}()
+	// destroy topics thread
+	go func() {
+		for _, t := range topics {
+			p.Close(t)
+		}
+	}()
 
 	N := 200
 	M := 1000
 	K := len(topics)
 	for i:=0;i<N;i++ {
-		// consumer
+		// consumer threads
 		go func(idx int) {
-			s, _ := p.Subscribe(topics[idx % K])
-			for _ = range s.Events() {
+			for {
+				s, e := p.Subscribe(topics[idx % K])
+				if e == nil {
+					for _ = range s.Events() {
+					}
+				}
 			}
 		}(i)
 	}
-	//producer
+	//producer threads
 	for i:=0;i<K;i++ {
 		go func(idx int) {
 			for j := 0;j<M;j++ {
@@ -84,4 +98,6 @@ func TestRacePubsub(t *testing.T) {
 			}
 		}(i)
 	}
+	// let this run for a while
+	time.Sleep(time.Second)
 }
